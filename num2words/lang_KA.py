@@ -7,7 +7,7 @@
 # License as published by the Free Software Foundation; either
 # version 2.1 of the License, or (at your option) any later version.
 
-"""Georgian (`ka`) cardinal / ordinal / year number-to-words.
+"""Georgian (`ka`) cardinal / ordinal / year / date / time number-to-words.
 
 Georgian uses a vigesimal (base-20) system for 21-99: numbers between
 multiples of 20 are constructed as `<base>და<remainder>`, joined as
@@ -63,6 +63,14 @@ HUNDREDS = {
 # the regular rule (drop final vowel, prepend მე, append ე) including
 # compound 1: მეერთე.
 ORDINAL_FIRST_STANDALONE = 'პირველი'
+
+MONTHS = {
+    1: 'იანვარი', 2: 'თებერვალი', 3: 'მარტი', 4: 'აპრილი',
+    5: 'მაისი', 6: 'ივნისი', 7: 'ივლისი', 8: 'აგვისტო',
+    9: 'სექტემბერი', 10: 'ოქტომბერი', 11: 'ნოემბერი', 12: 'დეკემბერი',
+}
+
+VOWELS = ('ა', 'ე', 'ი', 'ო', 'უ')
 
 
 def _drop_final_vowel(word):
@@ -206,6 +214,102 @@ class Num2Word_KA(Num2Word_Base):
         self.verify_ordinal(value)
         # "მე-5" — the standard Georgian written form for ordinal numerals.
         return 'მე-%d' % int(value)
+
+    # ----- morphology (public — used by TTS text normalization) -------
+    #
+    # Georgian has two distinct elision rules, and _drop_final_vowel
+    # above implements neither of them: it is the *compounding* rule
+    # (ორასი → ორას before a remainder, ერთი → ერთ inside ordinals).
+    # Attributive position keeps ა (რვა საათზე, never რვ საათზე),
+    # while vowel-initial suffixes elide any final vowel (რვა → რვის).
+
+    def stem_attr(self, word):
+        """Attributive stem: a numeral before a case-marked noun (or a
+        noun before a consonant-initial suffix) drops a final ი but
+        keeps other vowels — ხუთი→ხუთ, წუთი→წუთ, but რვა→რვა, მეოცე→მეოცე."""
+        if word.endswith('ი'):
+            return word[:-1]
+        return word
+
+    def stem_vowel(self, word):
+        """Stem before a vowel-initial suffix: any final vowel elides —
+        ხუთი+ის→ხუთის, რვა+ის→რვის, მეოცე+ის→მეოცის."""
+        if word and word[-1] in VOWELS:
+            return word[:-1]
+        return word
+
+    def join_suffix(self, word, suffix):
+        """Join a spoken word with a Georgian case suffix or particle,
+        picking the stem by whether the suffix starts with a vowel."""
+        if not suffix:
+            return word
+        if suffix[0] in VOWELS:
+            return self.stem_vowel(word) + suffix
+        return self.stem_attr(word) + suffix
+
+    def attr_cardinal(self, value):
+        """Cardinal in attributive position — only the last word stems:
+        17 → ჩვიდმეტ, 110 → ას ათ (not ას ათ*ი*), 8 → რვა."""
+        head, _, last = self.to_cardinal(value).rpartition(' ')
+        stemmed = self.stem_attr(last)
+        return head + ' ' + stemmed if head else stemmed
+
+    # ----- dates & times ----------------------------------------------
+
+    def to_date(self, day, month, year):
+        """Spoken date in broadcast order: '<year> წლის <day> <month>'.
+        Day 1 is the ordinal პირველი; every other day is a cardinal
+        (ოთხი ივლისი, ოცდაექვსი მაისი)."""
+        day, month, year = int(day), int(month), int(year)
+        if not 1 <= day <= 31:
+            raise ValueError('day out of range: %d' % day)
+        if month not in MONTHS:
+            raise ValueError('month out of range: %d' % month)
+        day_word = (ORDINAL_FIRST_STANDALONE if day == 1
+                    else self.to_cardinal(day))
+        return '%s წლის %s %s' % (
+            self.to_cardinal(year), day_word, MONTHS[month])
+
+    def to_time(self, hour, minute, second=None, suffix=None):
+        """Spoken clock time.
+
+        Without ``suffix`` the form is nominative: 17:35 → 'ჩვიდმეტი
+        საათი და ოცდათხუთმეტი წუთი'. With ``suffix`` (e.g. 'ზე' from a
+        following 'საათზე' in the source text) the case lands on the
+        last unit and earlier units take the linking dative '-სა':
+        'ჩვიდმეტ საათსა და ოცდათხუთმეტ წუთზე'; 17:00 → 'ჩვიდმეტ საათზე'.
+        """
+        hour, minute = int(hour), int(minute)
+        if not 0 <= hour <= 23:
+            raise ValueError('hour out of range: %d' % hour)
+        if not 0 <= minute <= 59:
+            raise ValueError('minute out of range: %d' % minute)
+        if second is not None:
+            second = int(second)
+            if not 0 <= second <= 59:
+                raise ValueError('second out of range: %d' % second)
+
+        units = [(hour, 'საათი')]
+        if minute or second:
+            units.append((minute, 'წუთი'))
+        if second:
+            units.append((second, 'წამი'))
+
+        if suffix is None:
+            parts = ['%s %s' % (self.to_cardinal(n), noun)
+                     for n, noun in units]
+        else:
+            parts = []
+            for i, (n, noun) in enumerate(units):
+                if i < len(units) - 1:
+                    unit = self.stem_attr(noun) + 'სა'
+                else:
+                    unit = self.join_suffix(noun, suffix)
+                parts.append('%s %s' % (self.attr_cardinal(n), unit))
+
+        if len(parts) == 1:
+            return parts[0]
+        return ', '.join(parts[:-1]) + ' და ' + parts[-1]
 
     # to_year / to_currency / pluralize: defaults are fine. Georgian
     # reads years as plain cardinals (no "nineteen ninety-nine"

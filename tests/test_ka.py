@@ -142,3 +142,120 @@ class Num2WordsKATest(TestCase):
             num2words(2024, lang="ka", to="year"),
             num2words(2024, lang="ka"),
         )
+
+    # ----- morphology helpers ------------------------------------------
+
+    def _ka(self):
+        from num2words import CONVERTER_CLASSES
+        return CONVERTER_CLASSES["ka"]
+
+    def test_stem_attr_drops_final_i_keeps_a(self):
+        ka = self._ka()
+        self.assertEqual(ka.stem_attr("ხუთი"), "ხუთ")
+        self.assertEqual(ka.stem_attr("წუთი"), "წუთ")
+        self.assertEqual(ka.stem_attr("რვა"), "რვა")
+        self.assertEqual(ka.stem_attr("მეოცე"), "მეოცე")
+
+    def test_stem_vowel_drops_any_final_vowel(self):
+        ka = self._ka()
+        self.assertEqual(ka.stem_vowel("ხუთი"), "ხუთ")
+        self.assertEqual(ka.stem_vowel("რვა"), "რვ")
+        self.assertEqual(ka.stem_vowel("მეოცე"), "მეოც")
+
+    def test_join_suffix_consonant_initial(self):
+        ka = self._ka()
+        self.assertEqual(ka.join_suffix("ხუთი", "ზე"), "ხუთზე")
+        self.assertEqual(ka.join_suffix("რვა", "ს"), "რვას")
+        self.assertEqual(ka.join_suffix("მეოცე", "ში"), "მეოცეში")
+        self.assertEqual(ka.join_suffix("საათი", "ზე"), "საათზე")
+
+    def test_join_suffix_vowel_initial(self):
+        ka = self._ka()
+        self.assertEqual(ka.join_suffix("სამი", "ის"), "სამის")
+        self.assertEqual(ka.join_suffix("რვა", "ის"), "რვის")
+        self.assertEqual(ka.join_suffix("მეოცე", "ის"), "მეოცის")
+        self.assertEqual(ka.join_suffix("საათი", "ამდე"), "საათამდე")
+
+    def test_attr_cardinal_stems_last_word_only(self):
+        ka = self._ka()
+        self.assertEqual(ka.attr_cardinal(17), "ჩვიდმეტ")
+        self.assertEqual(ka.attr_cardinal(8), "რვა")
+        self.assertEqual(ka.attr_cardinal(110), "ას ათ")
+
+    # ----- dates -------------------------------------------------------
+
+    def test_to_date_broadcast_order(self):
+        ka = self._ka()
+        self.assertEqual(
+            ka.to_date(4, 7, 2026),
+            "ორი ათას ოცდაექვსი წლის ოთხი ივლისი",
+        )
+
+    def test_to_date_day_one_is_ordinal(self):
+        ka = self._ka()
+        self.assertEqual(
+            ka.to_date(1, 1, 2025),
+            "ორი ათას ოცდახუთი წლის პირველი იანვარი",
+        )
+
+    def test_to_date_rejects_out_of_range(self):
+        ka = self._ka()
+        with self.assertRaises(ValueError):
+            ka.to_date(45, 7, 2026)
+        with self.assertRaises(ValueError):
+            ka.to_date(4, 13, 2026)
+
+    # ----- times -------------------------------------------------------
+
+    def test_to_time_nominative(self):
+        ka = self._ka()
+        self.assertEqual(
+            ka.to_time(23, 50),
+            "ოცდასამი საათი და ორმოცდაათი წუთი",
+        )
+        self.assertEqual(ka.to_time(17, 0), "ჩვიდმეტი საათი")
+
+    def test_to_time_with_seconds(self):
+        ka = self._ka()
+        self.assertEqual(
+            ka.to_time(9, 5, 30),
+            "ცხრა საათი, ხუთი წუთი და ოცდაათი წამი",
+        )
+
+    def test_to_time_suffix_hour_only(self):
+        ka = self._ka()
+        self.assertEqual(ka.to_time(17, 0, suffix="ზე"), "ჩვიდმეტ საათზე")
+        self.assertEqual(ka.to_time(8, 0, suffix="ზე"), "რვა საათზე")
+
+    def test_to_time_suffix_with_minutes(self):
+        ka = self._ka()
+        self.assertEqual(
+            ka.to_time(17, 35, suffix="ზე"),
+            "ჩვიდმეტ საათსა და ოცდათხუთმეტ წუთზე",
+        )
+
+    def test_to_time_rejects_out_of_range(self):
+        ka = self._ka()
+        with self.assertRaises(ValueError):
+            ka.to_time(24, 0)
+        with self.assertRaises(ValueError):
+            ka.to_time(12, 60)
+
+
+class RomanToIntTest(TestCase):
+    """Strict canonical Roman-numeral parsing."""
+
+    def test_canonical_values(self):
+        from num2words import roman_to_int
+        for token, value in [
+            ("I", 1), ("IV", 4), ("V", 5), ("IX", 9), ("X", 10),
+            ("XXI", 21), ("XXXIX", 39), ("XL", 40), ("XC", 90),
+            ("C", 100), ("CD", 400), ("MCMXCIX", 1999), ("MMXXVI", 2026),
+        ]:
+            self.assertEqual(roman_to_int(token), value)
+
+    def test_rejects_non_canonical(self):
+        from num2words import roman_to_int
+        for bad in ["", "IIII", "VX", "IC", "XM", "ix", "ABC", "I I"]:
+            with self.assertRaises(ValueError):
+                roman_to_int(bad)
