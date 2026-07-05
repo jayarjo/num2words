@@ -253,6 +253,17 @@ class Num2Word_Base(object):
     def to_year(self, value, **kwargs):
         return self.to_cardinal(value)
 
+    def to_date(self, day, month, year):
+        """Spoken calendar date. Languages opt in by overriding —
+        month names, ordering, and case conventions are per-language."""
+        raise NotImplementedError
+
+    def to_time(self, hour, minute, second=None, suffix=None):
+        """Spoken clock time. Languages opt in by overriding.
+        ``suffix`` lets callers request a case-marked form where the
+        language inflects the trailing unit (see lang_KA)."""
+        raise NotImplementedError
+
     def pluralize(self, n, forms):
         """
         Should resolve gettext form:
