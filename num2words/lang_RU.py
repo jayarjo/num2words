@@ -318,6 +318,65 @@ class Num2Word_RU(Num2Word_Base):
         return self._int2word(int(n), cardinal=False, case=case, plural=plural,
                               gender=gender, animate=animate)
 
+    # ----- dates & times (used by TTS text normalization) -------------
+    #
+    # Detection (which digit runs are dates/times) lives in the omni repo's
+    # apps/api/text_normalize/ru.py; these render the parsed parts with correct
+    # Russian morphology, reusing the case/gender/pluralize machinery above.
+
+    # Genitive month names — a date is read "<day-ord.gen> <month.gen>
+    # <year-ord.gen> года" ("4 июля 2026" → "четвёртого июля две тысячи
+    # двадцать шестого года"). Genitive is the dominant spoken realization of
+    # "DD месяца" in running text; a bare nominative label is the rarer case.
+    MONTHS_GEN = {
+        1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля',
+        5: 'мая', 6: 'июня', 7: 'июля', 8: 'августа',
+        9: 'сентября', 10: 'октября', 11: 'ноября', 12: 'декабря',
+    }
+
+    # (singular, 2-4 form, 5+/genitive-plural) for pluralize(). час is
+    # masculine; минута/секунда are feminine (hence the gender on the count).
+    HOUR_FORMS = ('час', 'часа', 'часов')
+    MINUTE_FORMS = ('минута', 'минуты', 'минут')
+    SECOND_FORMS = ('секунда', 'секунды', 'секунд')
+
+    def to_date(self, day, month, year):
+        """Spoken date, genitive: '<day> <month> <year> года'."""
+        day, month, year = int(day), int(month), int(year)
+        if not 1 <= day <= 31:
+            raise ValueError('day out of range: %d' % day)
+        if month not in self.MONTHS_GEN:
+            raise ValueError('month out of range: %d' % month)
+        return '%s %s %s года' % (
+            self.to_ordinal(day, case='g', gender='m'),
+            self.MONTHS_GEN[month],
+            self.to_ordinal(year, case='g', gender='m'),
+        )
+
+    def to_time(self, hour, minute, second=None):
+        """Spoken 24-hour clock time: '<h> час(а/ов) [<m> минут(ы/…)]
+        [<s> секунд(ы/…)]'. Minutes are dropped when zero (17:00 →
+        'семнадцать часов'); the count agrees in gender + Slavic plural."""
+        hour, minute = int(hour), int(minute)
+        if not 0 <= hour <= 23:
+            raise ValueError('hour out of range: %d' % hour)
+        if not 0 <= minute <= 59:
+            raise ValueError('minute out of range: %d' % minute)
+        if second is not None:
+            second = int(second)
+            if not 0 <= second <= 59:
+                raise ValueError('second out of range: %d' % second)
+
+        parts = ['%s %s' % (self.to_cardinal(hour, gender='m'),
+                            self.pluralize(hour, self.HOUR_FORMS))]
+        if minute or second:
+            parts.append('%s %s' % (self.to_cardinal(minute, gender='f'),
+                                    self.pluralize(minute, self.MINUTE_FORMS)))
+        if second:
+            parts.append('%s %s' % (self.to_cardinal(second, gender='f'),
+                                    self.pluralize(second, self.SECOND_FORMS)))
+        return ' '.join(parts)
+
     def _money_verbose(self, number, currency):
         if currency == 'UAH':
             return self._int2word(number, gender='f')

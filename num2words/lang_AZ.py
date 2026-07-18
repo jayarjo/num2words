@@ -90,6 +90,23 @@ class Num2Word_AZ(Num2Word_Base):
     CURRENCY_FRACTION = ('qəpik', 'qəpik')
     CURRENCY_FORMS = {'AZN': (CURRENCY_INTEGRAL, CURRENCY_FRACTION)}
 
+    # Nominative month names — the day-month-year date reading uses them as-is
+    # ("4 iyul 2026-cı il"), no genitive form needed.
+    MONTHS = {
+        1: u"yanvar",
+        2: u"fevral",
+        3: u"mart",
+        4: u"aprel",
+        5: u"may",
+        6: u"iyun",
+        7: u"iyul",
+        8: u"avqust",
+        9: u"sentyabr",
+        10: u"oktyabr",
+        11: u"noyabr",
+        12: u"dekabr",
+    }
+
     def setup(self):
         super().setup()
 
@@ -158,6 +175,39 @@ class Num2Word_AZ(Num2Word_Base):
             year = " ".join(["e.ə.", year])
 
         return year
+
+    def to_date(self, day, month, year):
+        """Spoken date '<day> <month> <year-ordinal> il' — the standard
+        Azerbaijani form (4 iyul 2026-cı il → 'dörd iyul iki min iyirmi
+        altıncı il'). The day is a plain cardinal; the year takes the
+        vowel-harmony ordinal suffix plus 'il' ('year')."""
+        day, month, year = int(day), int(month), int(year)
+        if not 1 <= day <= 31:
+            raise ValueError('day out of range: %d' % day)
+        if month not in self.MONTHS:
+            raise ValueError('month out of range: %d' % month)
+        return '%s %s %s il' % (
+            self.to_cardinal(day), self.MONTHS[month], self.to_ordinal(year))
+
+    def to_time(self, hour, minute, second=None):
+        """Spoken 24-hour clock time as a duration reading: '<h> saat
+        [<m> dəqiqə] [<s> saniyə]'. Azerbaijani nouns stay singular after a
+        numeral, so the unit words never inflect; minutes drop when zero."""
+        hour, minute = int(hour), int(minute)
+        if not 0 <= hour <= 23:
+            raise ValueError('hour out of range: %d' % hour)
+        if not 0 <= minute <= 59:
+            raise ValueError('minute out of range: %d' % minute)
+        if second is not None:
+            second = int(second)
+            if not 0 <= second <= 59:
+                raise ValueError('second out of range: %d' % second)
+        parts = ['%s saat' % self.to_cardinal(hour)]
+        if minute or second:
+            parts.append('%s dəqiqə' % self.to_cardinal(minute))
+        if second:
+            parts.append('%s saniyə' % self.to_cardinal(second))
+        return ' '.join(parts)
 
     def pluralize(self, n, forms):
         form = 0 if n == 1 else 1

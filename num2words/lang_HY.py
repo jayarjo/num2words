@@ -268,6 +268,52 @@ class Num2Word_HY(Num2Word_Base):
 
         return self.to_cardinal(val) + " թվական"
 
+    # ----- dates & times (used by TTS text normalization) -------------
+    #
+    # Detection lives in the omni repo's apps/api/text_normalize/hy.py; these
+    # render the parsed parts. Armenian nouns stay singular after a numeral, so
+    # there is no agreement table — the count is a plain cardinal.
+
+    # Genitive month names — a date reads "<year> թվականի <month> <day>"
+    # ("2026 թվականի հուլիսի չորս").
+    MONTHS_GEN = {
+        1: 'հունվարի', 2: 'փետրվարի', 3: 'մարտի', 4: 'ապրիլի',
+        5: 'մայիսի', 6: 'հունիսի', 7: 'հուլիսի', 8: 'օգոստոսի',
+        9: 'սեպտեմբերի', 10: 'հոկտեմբերի', 11: 'նոյեմբերի', 12: 'դեկտեմբերի',
+    }
+
+    def to_date(self, day, month, year):
+        """Spoken date: '<year> թվականի <month> <day>'. to_year already drops
+        the leading մեկ for 1000-1999; append genitive -ի for թվականի."""
+        day, month, year = int(day), int(month), int(year)
+        if not 1 <= day <= 31:
+            raise ValueError('day out of range: %d' % day)
+        if month not in self.MONTHS_GEN:
+            raise ValueError('month out of range: %d' % month)
+        return '%sի %s %s' % (
+            self.to_year(year), self.MONTHS_GEN[month], self.to_cardinal(day))
+
+    def to_time(self, hour, minute, second=None):
+        """Spoken 24-hour clock time as a duration reading: '<h> ժամ [<m> րոպե]
+        [<s> վայրկյան]'. Minutes dropped when zero. (The idiomatic անց/պակաս
+        clock phrasing is deliberately not used — the duration form is
+        unambiguous for TTS.)"""
+        hour, minute = int(hour), int(minute)
+        if not 0 <= hour <= 23:
+            raise ValueError('hour out of range: %d' % hour)
+        if not 0 <= minute <= 59:
+            raise ValueError('minute out of range: %d' % minute)
+        if second is not None:
+            second = int(second)
+            if not 0 <= second <= 59:
+                raise ValueError('second out of range: %d' % second)
+        parts = ['%s ժամ' % self.to_cardinal(hour)]
+        if minute or second:
+            parts.append('%s րոպե' % self.to_cardinal(minute))
+        if second:
+            parts.append('%s վայրկյան' % self.to_cardinal(second))
+        return ' '.join(parts)
+
     def to_currency(self, val, currency='AMD', cents=True):
         """
         Convert a value to Armenian currency.

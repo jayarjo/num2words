@@ -1065,3 +1065,72 @@ class Num2Word_UK(Num2Word_Base):
         if level > 0:
             output = output + prefixes_ordinal[level]
         return output
+
+    # ----- dates & times (used by TTS text normalization) -------------
+    #
+    # Detection lives in the omni repo's apps/api/text_normalize/uk.py; these
+    # render the parsed parts with Ukrainian morphology. to_ordinal is
+    # nominative-only, so date ordinals go through a masculine-genitive suffix
+    # transform (only the last compound element inflects, as in Ukrainian).
+
+    # Genitive month names: "4 липня 2026 року" → "четвертого липня дві тисячі
+    # двадцять шостого року".
+    MONTHS_GEN = {
+        1: 'січня', 2: 'лютого', 3: 'березня', 4: 'квітня',
+        5: 'травня', 6: 'червня', 7: 'липня', 8: 'серпня',
+        9: 'вересня', 10: 'жовтня', 11: 'листопада', 12: 'грудня',
+    }
+
+    # (singular, 2-4 form, 5+/genitive-plural). Both година and хвилина are
+    # feminine — hence the feminine count in to_time.
+    HOUR_FORMS = ('година', 'години', 'годин')
+    MINUTE_FORMS = ('хвилина', 'хвилини', 'хвилин')
+    SECOND_FORMS = ('секунда', 'секунди', 'секунд')
+
+    def _ordinal_genitive(self, n):
+        """Masculine genitive of a nominative ordinal via its ending
+        (-ий → -ого, -ій → -ього). Compound ordinals inflect only the last
+        element, which carries that ending, so a string-level rule is safe."""
+        word = self.to_ordinal(n)
+        if word.endswith('ий'):
+            return word[:-2] + 'ого'
+        if word.endswith('ій'):
+            return word[:-2] + 'ього'
+        return word
+
+    def to_date(self, day, month, year):
+        """Spoken date, genitive: '<day> <month> <year> року'."""
+        day, month, year = int(day), int(month), int(year)
+        if not 1 <= day <= 31:
+            raise ValueError('day out of range: %d' % day)
+        if month not in self.MONTHS_GEN:
+            raise ValueError('month out of range: %d' % month)
+        return '%s %s %s року' % (
+            self._ordinal_genitive(day),
+            self.MONTHS_GEN[month],
+            self._ordinal_genitive(year),
+        )
+
+    def to_time(self, hour, minute, second=None):
+        """Spoken 24-hour clock time: '<h> годин(и/…) [<m> хвилин(и/…)]
+        [<s> секунд(и/…)]'. Minutes dropped when zero; both units are
+        feminine, so the count agrees in the feminine + 4-form plural."""
+        hour, minute = int(hour), int(minute)
+        if not 0 <= hour <= 23:
+            raise ValueError('hour out of range: %d' % hour)
+        if not 0 <= minute <= 59:
+            raise ValueError('minute out of range: %d' % minute)
+        if second is not None:
+            second = int(second)
+            if not 0 <= second <= 59:
+                raise ValueError('second out of range: %d' % second)
+
+        parts = ['%s %s' % (self.to_cardinal(hour, gender='feminine'),
+                            self.pluralize(hour, self.HOUR_FORMS))]
+        if minute or second:
+            parts.append('%s %s' % (self.to_cardinal(minute, gender='feminine'),
+                                    self.pluralize(minute, self.MINUTE_FORMS)))
+        if second:
+            parts.append('%s %s' % (self.to_cardinal(second, gender='feminine'),
+                                    self.pluralize(second, self.SECOND_FORMS)))
+        return ' '.join(parts)
